@@ -138,27 +138,22 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Start Server - immediately for Vercel serverless
-let server;
-const startServer = () => {
-  if (!server) {
-    server = app.listen(PORT, () => {
-      console.log(`✓ Server running on port ${PORT}`);
-      console.log(`Database state: ${mongoose.connection.readyState === 1 ? 'Connected' : 'Connecting...'}`);
-    });
-  }
-};
-
-// Start server immediately (don't wait for DB on Vercel)
-startServer();
-
-// Also attempt to connect to DB
+// Attempt to connect to DB (non-blocking for Vercel serverless)
 connectDB();
 
-// Handle server errors
+// Global error handler - must be last middleware
 app.use((err, req, res, next) => {
   console.error('Express error:', err);
-  res.status(500).json({ error: 'Internal server error' });
+  res.status(500).json({ error: 'Internal server error', message: err.message });
 });
 
+// For local development: start server if not in serverless environment
+if (require.main === module && !process.env.VERCEL) {
+  const server = app.listen(PORT, () => {
+    console.log(`✓ Server running on port ${PORT}`);
+    console.log(`Database state: ${mongoose.connection.readyState === 1 ? 'Connected' : 'Connecting...'}`);
+  });
+}
+
+// Export app for Vercel serverless
 module.exports = app;
