@@ -508,6 +508,41 @@ const renderDashboard = () => {
 // --- Event Listeners ---
 document.addEventListener('DOMContentLoaded', () => {
   
+  // Mobile Menu Toggle
+  const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
+  const sidebar = document.getElementById('sidebar');
+  const sidebarOverlay = document.getElementById('sidebar-overlay');
+
+  const closeMobileMenu = () => {
+    sidebar.classList.remove('open');
+    sidebarOverlay.classList.remove('open');
+  };
+
+  const openMobileMenu = () => {
+    sidebar.classList.add('open');
+    sidebarOverlay.classList.add('open');
+  };
+
+  if (mobileMenuToggle) {
+    mobileMenuToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (sidebar.classList.contains('open')) {
+        closeMobileMenu();
+      } else {
+        openMobileMenu();
+      }
+    });
+  }
+
+  if (sidebarOverlay) {
+    sidebarOverlay.addEventListener('click', closeMobileMenu);
+  }
+
+  // Close menu when nav item is clicked
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.addEventListener('click', closeMobileMenu);
+  });
+
   // Auth Toggles
   document.getElementById('show-register').onclick = (e) => {
     e.preventDefault();
