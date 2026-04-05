@@ -331,11 +331,18 @@ input:focus { outline: none; border-color: var(--accent-blue); }
   .files-header {
     flex-wrap: wrap;
     gap: 1rem;
+    margin-bottom: 1.25rem;
   }
 
   .file-actions {
     width: 100%;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+
+  .file-actions .btn {
+    width: 100%;
   }
 
   /* Table Responsiveness */
@@ -431,7 +438,7 @@ input:focus { outline: none; border-color: var(--accent-blue); }
   }
 
   .content-area {
-    padding: 1rem 0.75rem;
+    padding: 1.25rem;
   }
 
   /* Grid Layouts */
@@ -478,12 +485,20 @@ input:focus { outline: none; border-color: var(--accent-blue); }
   .files-header {
     flex-direction: column;
     gap: 0.75rem;
+    margin-bottom: 1.25rem;
   }
 
   .file-actions {
     width: 100%;
-    flex-wrap: wrap;
-    gap: 0.5rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+
+  .file-actions .btn {
+    padding: 12px 8px;
+    font-size: 0.8rem;
+    width: 100%;
   }
 
   /* Table - Horizontal Scroll */
