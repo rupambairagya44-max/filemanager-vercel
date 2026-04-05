@@ -19,39 +19,40 @@ app.use(express.static(path.join(__dirname, 'public')));
 // MongoDB Connection URI
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://filemanager:Rupam123@file.ceado4y.mongodb.net/filemanagerDB?retryWrites=true&w=majority&appName=FILE';
 
-// Mongoose connection options - OPTIMIZED for timeout issues
+// Mongoose connection options - OPTIMIZED for Vercel serverless
 const mongoOptions = {
-  serverSelectionTimeoutMS: 10000,      // 10 seconds to select a server
-  socketTimeoutMS: 60000,                // 60 seconds for socket operations
-  connectTimeoutMS: 10000,               // 10 seconds to establish connection
+  serverSelectionTimeoutMS: 5000,      // Shorter timeout for serverless
+  socketTimeoutMS: 45000,              // Socket timeout
+  connectTimeoutMS: 5000,              // Connection timeout
   retryWrites: true,
-  maxPoolSize: 10,                       // Connection pool size
-  minPoolSize: 5,                        // Minimum connections
-  maxIdleTimeMS: 30000,                  // Close idle connections
-  waitQueueTimeoutMS: 10000,             // Wait for connection from pool
-  serverMonitoringMode: 'auto',
-  heartbeatFrequencyMS: 10000            // Health checks
+  w: 'majority',
+  maxPoolSize: 1,                      // Minimal connections for serverless
+  minPoolSize: 0,                      // No minimum for serverless
+  maxIdleTimeMS: 10000,                // Close idle connections quickly
+  waitQueueTimeoutMS: 5000,            // Wait for connection from pool
+  serverMonitoringMode: 'poll',        // Better for serverless
+  heartbeatFrequencyMS: 30000          // Slower health checks for serverless
 };
 
 // Connect to MongoDB with improved error handling and retry logic
 let connectionAttempts = 0;
-const maxConnectionAttempts = 5;
+const maxConnectionAttempts = 3;
 
 const connectDB = async () => {
   try {
     connectionAttempts++;
-    console.log(`MongoDB Connection Attempt #${connectionAttempts}...`);
+    console.log(`MongoDB Connection Attempt #${connectionAttempts}/${maxConnectionAttempts}...`);
     
     await mongoose.connect(MONGODB_URI, mongoOptions);
     console.log('✓ Connected to MongoDB Atlas Successfully');
     connectionAttempts = 0; // Reset on success
     
-    // Seed Default Admin User
+    // Seed Default Admin User (only on first connection)
     const User = require('./models/User');
     const adminEmail = 'Rupam@admin.com';
     
     try {
-      const adminExists = await User.findOne({ email: adminEmail }).timeout(5000);
+      const adminExists = await User.findOne({ email: adminEmail }).timeout(3000);
       
       if (!adminExists) {
         const salt = await bcrypt.genSalt(10);
@@ -68,18 +69,20 @@ const connectDB = async () => {
       }
     } catch (seedErr) {
       console.warn('⚠ Warning seeding admin:', seedErr.message);
+      // Continue even if seeding fails
     }
     
   } catch (err) {
-    console.error(`✗ MongoDB Connection Error (Attempt ${connectionAttempts}):`, err.message);
+    console.error(`✗ MongoDB Connection Error (Attempt ${connectionAttempts}/${maxConnectionAttempts}):`, err.message);
     
     if (connectionAttempts < maxConnectionAttempts) {
-      const delay = Math.min(1000 * connectionAttempts, 5000); // Exponential backoff
+      const delay = 2000 * connectionAttempts; // 2s, 4s, 6s
       console.log(`Retrying in ${delay}ms...`);
       setTimeout(connectDB, delay);
     } else {
-      console.error('✗ Max connection attempts reached. Exiting.');
-      process.exit(1);
+      console.error('✗ Max connection attempts reached.');
+      console.log('⚠️  App will attempt to connect lazily on first request.');
+      // Don't exit on Vercel - allow lazy connection
     }
   }
 };
@@ -135,22 +138,22 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Start Server - only after DB connection is ready
+// Start Server - immediately for Vercel serverless
 let server;
-const checkDBAndStartServer = () => {
-  if (mongoose.connection.readyState === 1) {
-    // readyState 1 = connected
+const startServer = () => {
+  if (!server) {
     server = app.listen(PORT, () => {
       console.log(`✓ Server running on port ${PORT}`);
-      console.log(`✓ Database: Connected and Ready`);
+      console.log(`Database state: ${mongoose.connection.readyState === 1 ? 'Connected' : 'Connecting...'}`);
     });
-  } else {
-    // Retry in 1 second
-    setTimeout(checkDBAndStartServer, 1000);
   }
 };
 
-checkDBAndStartServer();
+// Start server immediately (don't wait for DB on Vercel)
+startServer();
+
+// Also attempt to connect to DB
+connectDB();
 
 // Handle server errors
 app.use((err, req, res, next) => {
