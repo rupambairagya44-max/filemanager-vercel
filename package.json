@@ -4,7 +4,7 @@
   "description": "File Manager Web Application with MongoDB and GridFS storage",
   "main": "server.js",
   "engines": {
-    "node": "18.x"
+    "node": "24.x"
   },
   "scripts": {
     "start": "node server.js",
