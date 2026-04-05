@@ -3,8 +3,8 @@
 ## 🚀 Deploy to Vercel (Step by Step)
 
 ### Login Credentials
-- **Email:** `Rupam@admin.com`
-- **Password:** `Rupam@123`
+- **Email:** `Email Me-rupambairagya08@gmail.com`
+- **Password:** `Email Me-rupambairagya08@gmail.com`
 
 ---
 
