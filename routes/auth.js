@@ -7,7 +7,17 @@ const User = require('../models/User');
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
-    let user = await User.findOne({ email });
+    
+    // Validate input
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'Name, email, and password are required' });
+    }
+    
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+    
+    let user = await User.findOne({ email }).timeout(5000);
     if (user) return res.status(400).json({ error: 'User already exists' });
 
     const salt = await bcrypt.genSalt(10);
@@ -24,7 +34,14 @@ router.post('/register', async (req, res) => {
     await user.save();
     res.json({ message: 'Registration successful. Waiting for admin approval.' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Registration Error:', err);
+    
+    // Handle specific timeout errors
+    if (err.name === 'MongooseError' || err.message.includes('timeout')) {
+      return res.status(503).json({ error: 'Database connection timeout. Please try again.' });
+    }
+    
+    res.status(500).json({ error: 'Registration failed. Please try again later.' });
   }
 });
 
@@ -33,7 +50,12 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email });
+    // Validate input
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    const user = await User.findOne({ email }).timeout(5000);
     if (!user) return res.status(400).json({ error: 'Invalid Credentials' });
 
     if (user.status === 'pending')  return res.status(403).json({ error: 'Account is pending admin approval' });
@@ -52,7 +74,14 @@ router.post('/login', async (req, res) => {
       }
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Login Error:', err);
+    
+    // Handle specific timeout errors
+    if (err.name === 'MongooseError' || err.message.includes('timeout')) {
+      return res.status(503).json({ error: 'Database connection timeout. Please try again.' });
+    }
+    
+    res.status(500).json({ error: 'Login failed. Please try again later.' });
   }
 });
 

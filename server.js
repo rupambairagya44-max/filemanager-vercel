@@ -19,8 +19,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 // MongoDB Connection URI
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://filemanager:Rupam123@file.ceado4y.mongodb.net/filemanagerDB?retryWrites=true&w=majority&appName=FILE';
 
-// Connect to MongoDB
-mongoose.connect(MONGODB_URI).then(async () => {
+// Connect to MongoDB with improved error handling
+mongoose.connect(MONGODB_URI, {
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+}).then(async () => {
   console.log('Connected to MongoDB Atlas');
 
   // Seed Default Admin User
@@ -42,7 +45,8 @@ mongoose.connect(MONGODB_URI).then(async () => {
     console.log('Default Admin seeded → Email: Rupam@admin.com | Password: Rupam@123');
   }
 }).catch(err => {
-  console.error('MongoDB Connection Error:', err);
+  console.error('MongoDB Connection Error:', err.message);
+  process.exit(1);
 });
 
 // Routes

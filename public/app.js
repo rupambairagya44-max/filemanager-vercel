@@ -53,10 +53,26 @@ let allFiles = []; // Flattened array of all file nodes from DB
 const API_URL = '/api';
 
 const apiFetch = async (endpoint, options = {}) => {
-  const res = await fetch(`${API_URL}${endpoint}`, options);
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'API Error');
-  return data;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+    
+    const res = await fetch(`${API_URL}${endpoint}`, {
+      ...options,
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    const data = await res.json();
+    
+    if (!res.ok) throw new Error(data.error || 'API Error');
+    return data;
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('Request timed out. Please check your connection and try again.');
+    }
+    throw err;
+  }
 };
 
 // --- Authentication ---
@@ -72,8 +88,15 @@ const checkAuth = () => {
 
 const login = async (e) => {
   e.preventDefault();
-  const email = document.getElementById('login-email').value;
+  const email = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
+  
+  // Validation
+  if (!email || !password) {
+    showToast('Please enter email and password', 'error');
+    return;
+  }
+  
   try {
     showLoading('Logging in...');
     const data = await apiFetch('/auth/login', {
@@ -83,10 +106,15 @@ const login = async (e) => {
     });
     localStorage.setItem('fm_user', JSON.stringify(data.user));
     currentUser = data.user;
-    showToast('Logged in successfully', 'success');
+    showToast('Logged in successfully!', 'success');
+    // Clear form
+    document.getElementById('login-email').value = '';
+    document.getElementById('login-password').value = '';
     initApp();
   } catch (err) {
-    showToast(err.message, 'error');
+    console.error('Login error:', err);
+    const errorMessage = err.message || 'Login failed. Please try again.';
+    showToast(errorMessage, 'error');
   } finally {
     hideLoading();
   }
@@ -94,20 +122,44 @@ const login = async (e) => {
 
 const register = async (e) => {
   e.preventDefault();
-  const name = document.getElementById('reg-name').value;
-  const email = document.getElementById('reg-email').value;
+  const name = document.getElementById('reg-name').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
   const password = document.getElementById('reg-password').value;
+  
+  // Validation
+  if (!name || !email || !password) {
+    showToast('Please fill in all fields', 'error');
+    return;
+  }
+  
+  if (password.length < 6) {
+    showToast('Password must be at least 6 characters', 'error');
+    return;
+  }
+  
+  if (!email.includes('@')) {
+    showToast('Please enter a valid email', 'error');
+    return;
+  }
+  
   try {
-    showLoading('Registering...');
+    showLoading('Creating account...');
     const data = await apiFetch('/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email, password })
     });
     showToast(data.message, 'success');
-    document.getElementById('show-login').click();
+    // Clear form
+    document.getElementById('reg-name').value = '';
+    document.getElementById('reg-email').value = '';
+    document.getElementById('reg-password').value = '';
+    // Switch to login
+    setTimeout(() => document.getElementById('show-login').click(), 1000);
   } catch (err) {
-    showToast(err.message, 'error');
+    console.error('Registration error:', err);
+    const errorMessage = err.message || 'Registration failed. Please try again.';
+    showToast(errorMessage, 'error');
   } finally {
     hideLoading();
   }
