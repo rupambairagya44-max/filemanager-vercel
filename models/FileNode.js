@@ -13,4 +13,11 @@ const fileNodeSchema = new mongoose.Schema({
   size:       { type: Number, default: 0 },
 }, { timestamps: true });
 
+// Indexes for faster queries
+fileNodeSchema.index({ parentId: 1 });
+fileNodeSchema.index({ ownerId: 1 });
+fileNodeSchema.index({ type: 1 });
+fileNodeSchema.index({ parentId: 1, ownerId: 1 }); // Compound index
+fileNodeSchema.index({ name: 'text' }); // Full-text search
+
 module.exports = mongoose.model('FileNode', fileNodeSchema);

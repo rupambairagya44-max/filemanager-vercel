@@ -9,18 +9,39 @@ const FileNode = require('../models/FileNode');
 // Use memory storage — files go to GridFS, not disk
 const upload = multer({ storage: multer.memoryStorage() });
 
+// Helper: Check DB connection
+const checkDB = () => {
+  if (mongoose.connection.readyState !== 1) {
+    throw new Error('Database is not connected');
+  }
+};
+
 // Helper: get GridFS bucket
 const getBucket = () => {
+  checkDB();
   return new GridFSBucket(mongoose.connection.db, { bucketName: 'uploads' });
+};
+  }
 };
 
 // GET all files and folders
 router.get('/', async (req, res) => {
   try {
-    const files = await FileNode.find().timeout(5000);
+    checkDB();
+    
+    // Use lean() for better performance - returns plain JS objects, not Mongoose docs
+    const files = await FileNode.find()
+      .lean()
+      .timeout(10000)
+      .exec();
+    
     res.json(files);
   } catch (err) {
-    console.error('Files fetch error:', err);
+    console.error('Files fetch error:', err.message);
+    
+    if (err.message.includes('not connected')) {
+      return res.status(503).json({ error: 'Database is not connected. Please try again.' });
+    }
     
     if (err.name === 'MongooseError' || err.message.includes('timeout')) {
       return res.status(503).json({ error: 'Database timeout. Please try again.' });
@@ -101,15 +122,32 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 // PUT rename node
 router.put('/rename/:id', async (req, res) => {
   try {
+    checkDB();
     const { name } = req.body;
-    const node = await FileNode.findByIdAndUpdate(req.params.id, { name }, { new: true }).timeout(5000);
-    if (!node) return res.status(404).json({ error: 'Not found' });
+    
+    if (!name || name.trim() === '') {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+    
+    const node = await FileNode.findByIdAndUpdate(
+      req.params.id,
+      { name: name.trim() },
+      { new: true, runValidators: true }
+    ).timeout(10000);
+    
+    if (!node) return res.status(404).json({ error: 'File not found' });
     res.json(node);
   } catch (err) {
-    console.error('Rename error:', err);
+    console.error('Rename error:', err.message);
+    
+    if (err.message.includes('not connected')) {
+      return res.status(503).json({ error: 'Database is not connected. Please try again.' });
+    }
+    
     if (err.message.includes('timeout')) {
       return res.status(503).json({ error: 'Database timeout. Please try again.' });
     }
+    
     res.status(500).json({ error: 'Failed to rename' });
   }
 });
@@ -117,54 +155,84 @@ router.put('/rename/:id', async (req, res) => {
 // DELETE node — removes from GridFS too
 router.delete('/:id', async (req, res) => {
   try {
-    const node = await FileNode.findById(req.params.id).timeout(5000);
-    if (!node) return res.status(404).json({ error: 'Not found' });
+    checkDB();
+    
+    const node = await FileNode.findById(req.params.id).timeout(10000);
+    if (!node) return res.status(404).json({ error: 'File not found' });
 
     // Delete file from GridFS if it has a gridfsId
     if (node.type === 'file' && node.gridfsId) {
       try {
         const bucket = getBucket();
         await bucket.delete(new mongoose.Types.ObjectId(node.gridfsId));
+        console.log('GridFS file deleted:', node.gridfsId);
       } catch (e) {
         console.warn('GridFS delete warning:', e.message);
+        // Continue even if GridFS delete fails
       }
     }
 
-    await FileNode.findByIdAndDelete(req.params.id).timeout(5000);
-    res.json({ message: 'Deleted' });
+    await FileNode.findByIdAndDelete(req.params.id).timeout(10000);
+    res.json({ message: 'File deleted successfully' });
   } catch (err) {
-    console.error('Delete error:', err);
+    console.error('Delete error:', err.message);
+    
+    if (err.message.includes('not connected')) {
+      return res.status(503).json({ error: 'Database is not connected. Please try again.' });
+    }
+    
     if (err.message.includes('timeout')) {
       return res.status(503).json({ error: 'Database timeout. Please try again.' });
     }
-    res.status(500).json({ error: 'Failed to delete' });
+    
+    res.status(500).json({ error: 'Failed to delete file' });
   }
 });
 
 // GET download/preview file from GridFS
 router.get('/download/:id', async (req, res) => {
   try {
-    const node = await FileNode.findById(req.params.id).timeout(5000);
+    checkDB();
+    
+    const node = await FileNode.findById(req.params.id).timeout(10000);
     if (!node || node.type !== 'file') return res.status(404).json({ error: 'File not found' });
 
     if (!node.gridfsId) {
-      return res.status(404).json({ error: 'File has no GridFS ID. It may have been uploaded before migration.' });
+      return res.status(404).json({ error: 'File data is unavailable. It may have been deleted.' });
     }
 
-    const bucket = getBucket();
-    const downloadStream = bucket.openDownloadStream(new mongoose.Types.ObjectId(node.gridfsId));
+    try {
+      const bucket = getBucket();
+      const downloadStream = bucket.openDownloadStream(new mongoose.Types.ObjectId(node.gridfsId));
 
-    res.set('Content-Type', node.mimeType || 'application/octet-stream');
-    res.set('Content-Disposition', `inline; filename="${node.name}"`);
+      res.set('Content-Type', node.mimeType || 'application/octet-stream');
+      res.set('Content-Disposition', `inline; filename="${node.name}"`);
 
-    downloadStream.pipe(res);
+      downloadStream.pipe(res);
 
-    downloadStream.on('error', () => {
-      res.status(404).json({ error: 'File not found in GridFS' });
-    });
+      downloadStream.on('error', (err) => {
+        console.error('Download stream error:', err.message);
+        if (!res.headersSent) {
+          res.status(404).json({ error: 'File not found in storage' });
+        }
+      });
+    } catch (gridfsErr) {
+      console.error('GridFS error:', gridfsErr.message);
+      res.status(500).json({ error: 'Failed to download file' });
+    }
 
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Download error:', err.message);
+    
+    if (err.message.includes('not connected')) {
+      return res.status(503).json({ error: 'Database is not connected. Please try again.' });
+    }
+    
+    if (err.message.includes('timeout')) {
+      return res.status(503).json({ error: 'Database timeout. Please try again.' });
+    }
+    
+    res.status(500).json({ error: 'Failed to download file' });
   }
 });
 
