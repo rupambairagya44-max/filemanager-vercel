@@ -213,12 +213,27 @@ const showView = (viewId) => {
 };
 
 // --- File System ---
-const refreshFiles = async () => {
+const refreshFiles = async (retries = 3) => {
   try {
+    showLoading('Loading files...');
     const data = await apiFetch('/files');
     allFiles = data;
+    hideLoading();
   } catch (err) {
-    showToast('Failed to load files', 'error');
+    console.error('File refresh error:', err);
+    
+    if (retries > 0 && err.message.includes('timeout')) {
+      // Retry on timeout
+      console.log(`Retrying file fetch... (${retries} retries left)`);
+      showToast(`Connection timeout. Retrying...`, 'info');
+      await new Promise(r => setTimeout(r, 1000)); // Wait 1 second
+      return refreshFiles(retries - 1);
+    }
+    
+    hideLoading();
+    showToast(err.message || 'Failed to load files', 'error');
+    // Set empty array so app doesn't break
+    allFiles = [];
   }
 };
 
@@ -506,7 +521,7 @@ const renameNode = async (id) => {
 };
 
 // --- Users Admin ---
-const renderUsers = async () => {
+const renderUsers = async (retries = 2) => {
   if(currentUser.role !== 'admin') return;
   
   const tbody = document.getElementById('users-table-body');
@@ -542,7 +557,17 @@ const renderUsers = async () => {
       tbody.appendChild(tr);
     });
   } catch (err) {
-    showToast('Failed to load users', 'error');
+    console.error('Users fetch error:', err);
+    
+    if (retries > 0 && err.message.includes('timeout')) {
+      console.log(`Retrying user fetch... (${retries} retries left)`);
+      showToast('Connection timeout. Retrying...', 'info');
+      await new Promise(r => setTimeout(r, 1000));
+      return renderUsers(retries - 1);
+    }
+    
+    tbody.innerHTML = `<tr><td colspan="6">Failed to load users. ${err.message}</td></tr>`;
+    showToast(err.message || 'Failed to load users', 'error');
   }
 };
 

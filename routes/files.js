@@ -17,10 +17,16 @@ const getBucket = () => {
 // GET all files and folders
 router.get('/', async (req, res) => {
   try {
-    const files = await FileNode.find();
+    const files = await FileNode.find().timeout(5000);
     res.json(files);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Files fetch error:', err);
+    
+    if (err.name === 'MongooseError' || err.message.includes('timeout')) {
+      return res.status(503).json({ error: 'Database timeout. Please try again.' });
+    }
+    
+    res.status(500).json({ error: 'Failed to fetch files' });
   }
 });
 
@@ -28,6 +34,11 @@ router.get('/', async (req, res) => {
 router.post('/folder', async (req, res) => {
   try {
     const { name, parentId, ownerId } = req.body;
+    
+    if (!name || !ownerId) {
+      return res.status(400).json({ error: 'Name and owner ID are required' });
+    }
+    
     const newFolder = new FileNode({
       name,
       type: 'folder',
@@ -37,7 +48,8 @@ router.post('/folder', async (req, res) => {
     await newFolder.save();
     res.json(newFolder);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Create folder error:', err);
+    res.status(500).json({ error: 'Failed to create folder' });
   }
 });
 
@@ -90,17 +102,22 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 router.put('/rename/:id', async (req, res) => {
   try {
     const { name } = req.body;
-    const node = await FileNode.findByIdAndUpdate(req.params.id, { name }, { new: true });
+    const node = await FileNode.findByIdAndUpdate(req.params.id, { name }, { new: true }).timeout(5000);
+    if (!node) return res.status(404).json({ error: 'Not found' });
     res.json(node);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Rename error:', err);
+    if (err.message.includes('timeout')) {
+      return res.status(503).json({ error: 'Database timeout. Please try again.' });
+    }
+    res.status(500).json({ error: 'Failed to rename' });
   }
 });
 
 // DELETE node — removes from GridFS too
 router.delete('/:id', async (req, res) => {
   try {
-    const node = await FileNode.findById(req.params.id);
+    const node = await FileNode.findById(req.params.id).timeout(5000);
     if (!node) return res.status(404).json({ error: 'Not found' });
 
     // Delete file from GridFS if it has a gridfsId
@@ -113,17 +130,21 @@ router.delete('/:id', async (req, res) => {
       }
     }
 
-    await FileNode.findByIdAndDelete(req.params.id);
+    await FileNode.findByIdAndDelete(req.params.id).timeout(5000);
     res.json({ message: 'Deleted' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Delete error:', err);
+    if (err.message.includes('timeout')) {
+      return res.status(503).json({ error: 'Database timeout. Please try again.' });
+    }
+    res.status(500).json({ error: 'Failed to delete' });
   }
 });
 
 // GET download/preview file from GridFS
 router.get('/download/:id', async (req, res) => {
   try {
-    const node = await FileNode.findById(req.params.id);
+    const node = await FileNode.findById(req.params.id).timeout(5000);
     if (!node || node.type !== 'file') return res.status(404).json({ error: 'File not found' });
 
     if (!node.gridfsId) {

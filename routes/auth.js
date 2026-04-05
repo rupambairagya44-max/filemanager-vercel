@@ -88,10 +88,16 @@ router.post('/login', async (req, res) => {
 // Get all users (Admin only)
 router.get('/users', async (req, res) => {
   try {
-    const users = await User.find().select('-password');
+    const users = await User.find().select('-password').timeout(5000);
     res.json(users);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Users fetch error:', err);
+    
+    if (err.message.includes('timeout')) {
+      return res.status(503).json({ error: 'Database timeout. Please try again.' });
+    }
+    
+    res.status(500).json({ error: 'Failed to fetch users' });
   }
 });
 
@@ -99,20 +105,33 @@ router.get('/users', async (req, res) => {
 router.put('/users/:id/status', async (req, res) => {
   try {
     const { status } = req.body;
-    await User.findByIdAndUpdate(req.params.id, { status });
-    res.json({ message: 'User status updated' });
+    if (!status) {
+      return res.status(400).json({ error: 'Status is required' });
+    }
+    const user = await User.findByIdAndUpdate(req.params.id, { status }, { new: true }).timeout(5000);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ message: 'User status updated', user });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Status update error:', err);
+    if (err.message.includes('timeout')) {
+      return res.status(503).json({ error: 'Database timeout. Please try again.' });
+    }
+    res.status(500).json({ error: 'Failed to update user status' });
   }
 });
 
 // Delete user (Admin only)
 router.delete('/users/:id', async (req, res) => {
   try {
-    await User.findByIdAndDelete(req.params.id);
+    const user = await User.findByIdAndDelete(req.params.id).timeout(5000);
+    if (!user) return res.status(404).json({ error: 'User not found' });
     res.json({ message: 'User deleted' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Delete user error:', err);
+    if (err.message.includes('timeout')) {
+      return res.status(503).json({ error: 'Database timeout. Please try again.' });
+    }
+    res.status(500).json({ error: 'Failed to delete user' });
   }
 });
 
