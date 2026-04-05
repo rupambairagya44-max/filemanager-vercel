@@ -5,7 +5,28 @@ const showToast = (message, type = 'info') => {
   toast.className = `toast toast-${type}`;
   toast.innerText = message;
   container.appendChild(toast);
-  setTimeout(() => toast.remove(), 3000);
+  setTimeout(() => toast.remove(), 4000);
+};
+
+const checkDatabaseHealth = async () => {
+  try {
+    const res = await fetch(`${API_URL}health`, { 
+      method: 'GET',
+      timeout: 5000 
+    });
+    const data = await res.json();
+    
+    if (data.database === 'connected') {
+      console.log('✓ Database is connected');
+      return true;
+    } else {
+      console.warn('⚠ Database is disconnected');
+      return false;
+    }
+  } catch (err) {
+    console.error('Cannot check database health:', err.message);
+    return false;
+  }
 };
 
 const showLoading = (text = 'Loading...') => {
@@ -98,6 +119,16 @@ const login = async (e) => {
   }
   
   try {
+    showLoading('Checking connection...');
+    
+    // Check database health first
+    const dbHealthy = await checkDatabaseHealth();
+    if (!dbHealthy) {
+      hideLoading();
+      showToast('Database is not responding. Please try again in a moment.', 'error');
+      return;
+    }
+    
     showLoading('Logging in...');
     const data = await apiFetch('/auth/login', {
       method: 'POST',
